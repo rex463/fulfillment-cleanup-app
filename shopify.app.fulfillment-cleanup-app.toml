@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "990d931560e5357246edbb91fd0b8d4d"
-application_url = "https://example.com"
+application_url = "https://fulfillment-cleanup-app.onrender.com"
 embedded = true
 name = "fulfillment-cleanup-app"
 
@@ -9,10 +9,10 @@ name = "fulfillment-cleanup-app"
 scopes = "read_orders,read_all_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://fulfillment-cleanup-app.onrender.com/auth/callback" ]
 
 [webhooks]
 api_version = "2026-10"
 
 [build]
-automatically_update_urls_on_dev = true
+automatically_update_urls_on_dev = false
