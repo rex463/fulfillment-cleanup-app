@@ -27,6 +27,291 @@ export function classifySku(rawSku = "") {
   return null;
 }
 
+
+// ======================================================
+// SCAN A SINGLE ORDER (AUTOMATION)
+// ======================================================
+
+export async function scanOrderTargets(
+  admin,
+  orderId,
+  {
+    includeNavidium = true,
+    includeDropship = true,
+  } = {}
+) {
+  const eligible = [];
+  const exceptions = [];
+
+  const response =
+    await admin.graphql(
+      `#graphql
+        query ScanCleanupOrder(
+          $id: ID!
+        ) {
+          order(id: $id) {
+            id
+            name
+            createdAt
+
+            fulfillmentOrders(first: 25) {
+              nodes {
+                id
+                status
+
+                lineItems(first: 100) {
+                  nodes {
+                    id
+                    remainingQuantity
+
+                    lineItem {
+                      id
+                      name
+                      sku
+                      currentQuantity
+                      fulfillableQuantity
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        variables: {
+          id: orderId,
+        },
+      }
+    );
+
+  const json =
+    await response.json();
+
+  if (json.errors) {
+    throw new Error(
+      JSON.stringify(json.errors)
+    );
+  }
+
+  const order =
+    json.data?.order;
+
+  if (!order) {
+    throw new Error(
+      `Order not found: ${orderId}`
+    );
+  }
+
+  for (
+    const fo
+    of order.fulfillmentOrders.nodes
+  ) {
+    for (
+      const item
+      of fo.lineItems.nodes
+    ) {
+      const sku =
+        item.lineItem?.sku || "";
+
+      const type =
+        classifySku(sku);
+
+      if (!type) {
+        continue;
+      }
+
+      if (
+        type === "NAVIDIUM" &&
+        !includeNavidium
+      ) {
+        continue;
+      }
+
+      if (
+        type === "DROPSHIP" &&
+        !includeDropship
+      ) {
+        continue;
+      }
+
+      if (
+        item.remainingQuantity <= 0
+      ) {
+        continue;
+      }
+
+      const record = {
+        type,
+        orderId: order.id,
+        orderName: order.name,
+        createdAt: order.createdAt,
+        fulfillmentOrderId: fo.id,
+        fulfillmentOrderStatus:
+          fo.status,
+        fulfillmentLineItemId:
+          item.id,
+        itemName:
+          item.lineItem?.name || "",
+        sku,
+        remainingQuantity:
+          item.remainingQuantity,
+        currentQuantity:
+          item.lineItem
+            ?.currentQuantity ?? 0,
+        fulfillableQuantity:
+          item.lineItem
+            ?.fulfillableQuantity ?? 0,
+      };
+
+      const actionableStatus =
+        fo.status === "OPEN" ||
+        fo.status === "IN_PROGRESS";
+
+      const actionableQuantity =
+        record.currentQuantity > 0 &&
+        record.fulfillableQuantity > 0;
+
+      if (
+        actionableStatus &&
+        actionableQuantity
+      ) {
+        eligible.push({
+          ...record,
+          classification: "ELIGIBLE",
+        });
+      } else {
+        exceptions.push({
+          ...record,
+          classification:
+            "AUTOMATION_EXCEPTION",
+        });
+      }
+    }
+  }
+
+  return {
+    order: {
+      id: order.id,
+      name: order.name,
+      createdAt: order.createdAt,
+    },
+    eligible,
+    exceptions,
+  };
+}
+
+// ======================================================
+// PROCESS A SINGLE ORDER (AUTOMATION)
+// ======================================================
+
+export async function autoFulfillOrder(
+  admin,
+  orderId,
+  {
+    includeNavidium = true,
+    includeDropship = true,
+  } = {}
+) {
+  const scan =
+    await scanOrderTargets(
+      admin,
+      orderId,
+      {
+        includeNavidium,
+        includeDropship,
+      }
+    );
+
+  const results = [];
+
+  for (
+    const target
+    of scan.eligible
+  ) {
+    const verification =
+      await verifyTarget(
+        admin,
+        target
+      );
+
+    if (!verification.ok) {
+      results.push({
+        ...target,
+        result: "SKIPPED",
+        message:
+          verification.reason,
+      });
+      continue;
+    }
+
+    const fulfillment =
+      await fulfillTarget(
+        admin,
+        target,
+        verification.quantity
+      );
+
+    if (fulfillment.success) {
+      results.push({
+        ...target,
+        itemName:
+          verification.itemName,
+        sku: verification.sku,
+        quantity:
+          verification.quantity,
+        result: "FULFILLED",
+        fulfillmentId:
+          fulfillment.fulfillmentId,
+        message:
+          "Automatically fulfilled.",
+      });
+    } else {
+      results.push({
+        ...target,
+        quantity:
+          verification.quantity,
+        result: "ERROR",
+        message:
+          fulfillment.error,
+      });
+    }
+
+    // Keep mutations comfortably separated.
+    await new Promise(
+      (resolve) =>
+        setTimeout(resolve, 250)
+    );
+  }
+
+  return {
+    order: scan.order,
+    results,
+    exceptions: scan.exceptions,
+    summary: {
+      eligible:
+        scan.eligible.length,
+      fulfilled:
+        results.filter(
+          (item) =>
+            item.result === "FULFILLED"
+        ).length,
+      skipped:
+        results.filter(
+          (item) =>
+            item.result === "SKIPPED"
+        ).length,
+      errors:
+        results.filter(
+          (item) =>
+            item.result === "ERROR"
+        ).length,
+      exceptions:
+        scan.exceptions.length,
+    },
+  };
+}
+
 // ======================================================
 // SIGNED PREVIEW TOKEN
 // ======================================================

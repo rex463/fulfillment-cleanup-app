@@ -235,3 +235,28 @@ Shopify:
 Internationalization:
 
 - [Internationalizing your app](https://shopify.dev/docs/apps/best-practices/internationalization/getting-started)
+
+## Automatic fulfillment for target SKUs
+
+This project can automatically fulfill approved Navidium / ROAM Shipping Assurance and Drop Ship Fee line items when Shopify sends an `orders/create` webhook. Normal merchandise is ignored.
+
+The automatic route is `/webhooks/orders/create`. It reuses the same SKU classifier, exact fulfillment-order line verification, and line-item-only fulfillment mutation used by the manual cleanup screen. Customer notifications remain disabled.
+
+### Production safety switches
+
+Set these environment variables in Render:
+
+- `AUTO_FULFILL_ENABLED=false` — default. Deploy and test the webhook before changing this to `true`.
+- `AUTO_FULFILL_NAVIDIUM=true` — include SKUs beginning with `NVDPROTECTION`.
+- `AUTO_FULFILL_DROPSHIP=true` — include the approved Drop Ship Fee SKU allowlist.
+
+Recommended rollout:
+
+1. Deploy with `AUTO_FULFILL_ENABLED=false`.
+2. Deploy the Shopify app configuration so the `orders/create` webhook subscription is registered.
+3. Confirm webhook delivery in Render logs.
+4. Set `AUTO_FULFILL_ENABLED=true`.
+5. Place one controlled test order containing one normal item plus one target fee item.
+6. Confirm only the target fee line is fulfilled and the normal item remains unfulfilled.
+
+Webhook processing is idempotent at the fulfillment-line level: if Shopify retries a delivery after a line was already fulfilled, verification finds no remaining quantity and will not fulfill it again.

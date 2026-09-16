@@ -13,6 +13,10 @@ redirect_urls = [ "https://fulfillment-cleanup-app.onrender.com/auth/callback" ]
 
 [webhooks]
 api_version = "2026-10"
+[[webhooks.subscriptions]]
+topics = ["orders/create"]
+uri = "/webhooks/orders/create"
+
 
 [build]
 automatically_update_urls_on_dev = false
