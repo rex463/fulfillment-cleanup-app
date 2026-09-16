@@ -23,6 +23,10 @@ export default function App() {
         <s-link href="/app/cleanup">
           Fulfillment Cleanup
         </s-link>
+
+        <s-link href="/app/auto-fulfill">
+          Auto Fulfill
+        </s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>

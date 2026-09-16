@@ -32,3 +32,32 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+
+model AutoFulfillSettings {
+  shop             String   @id
+  enabled          Boolean  @default(false)
+  includeNavidium  Boolean  @default(true)
+  includeDropship  Boolean  @default(true)
+  lastRunAt        DateTime?
+  lastOrderName    String?
+  lastStatus       String?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+}
+
+model AutoFulfillLog {
+  id          Int      @id @default(autoincrement())
+  shop        String
+  orderId     String?
+  orderName   String?
+  status      String
+  fulfilled   Int      @default(0)
+  skipped     Int      @default(0)
+  errors      Int      @default(0)
+  exceptions  Int      @default(0)
+  message     String?
+  createdAt   DateTime @default(now())
+
+  @@index([shop, createdAt])
+}
